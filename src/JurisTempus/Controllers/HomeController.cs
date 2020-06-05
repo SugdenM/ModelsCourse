@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using JurisTempus.Data;
@@ -15,17 +16,24 @@ namespace JurisTempus.Controllers
   {
     private readonly ILogger<HomeController> _logger;
     private readonly BillingContext _context;
+    private readonly IMapper _mapper;
 
-    public HomeController(ILogger<HomeController> logger, BillingContext context)
+    public HomeController(ILogger<HomeController> logger, BillingContext context, IMapper mapper)
     {
       _logger = logger;
       _context = context;
+      _mapper = mapper;
     }
 
     public IActionResult Index()
     {
-      var result = _context.Clients.Include(c => c.Address).ToArray();
-      return View(result);
+      var result = _context.Clients
+        .Include(c => c.Address)
+        .Include(s => s.Cases)
+        .ToArray();
+
+      var vms = _mapper.Map<ClientViewModel[]>(result);
+      return View(vms);
     }
 
     [HttpGet("editor/{id:int}")]
@@ -36,7 +44,27 @@ namespace JurisTempus.Controllers
         .Where(c => c.Id == id)
         .FirstOrDefaultAsync();
 
-      return View(result);
+      return View(_mapper.Map<ClientViewModel>(result));
+    }
+
+    [HttpPost("editor/{id:int}")]
+    public async Task<IActionResult> ClientEditor(int id, ClientViewModel model)
+    {
+      var oldClient = await _context.Clients
+        .Include(c => c.Address)
+        .FirstOrDefaultAsync(c => c.Id == id);
+      if (oldClient != null)
+      {
+        _mapper.Map(model, oldClient);
+
+        if (await _context.SaveChangesAsync() > 0)
+        {
+          return RedirectToAction("Index");
+        }
+
+      }
+
+      return View();
     }
 
     [HttpGet("timesheet")]
